@@ -35,7 +35,7 @@
         <dependency>
             <groupId>com.andrei1058.spigot.sidebar</groupId>
             <artifactId>sidebar-base</artifactId>
-            <version>23.12.1-SNAPSHOT</version>
+            <version>24.2</version>
         </dependency>
     </dependencies>
     <build>

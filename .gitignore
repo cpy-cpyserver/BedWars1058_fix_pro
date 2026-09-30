@@ -35,6 +35,10 @@ $RECYCLE.BIN/
 *.ear
 hs_err_pid*
 
+# Bundled libraries which have to be committed for the build to work, see libs/README.md
+!libs/repo/**/*.jar
+!libs/repo/**/*.pom
+
 # Maven
 target/
 pom.xml.tag

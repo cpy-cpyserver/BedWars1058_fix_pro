@@ -52,6 +52,11 @@
             <id>tomkeuper-releases</id>
             <url>https://repo.tomkeuper.com/repository/releases/</url>
         </repository>
+        <!--Libraries extracted from the official release jar, see libs/README.md-->
+        <repository>
+            <id>bundled-libs</id>
+            <url>file:///${maven.multiModuleProjectDirectory}/libs/repo</url>
+        </repository>
     </repositories>
 
     <dependencies>
