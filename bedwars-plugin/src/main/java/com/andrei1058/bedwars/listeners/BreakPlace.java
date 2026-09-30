@@ -61,10 +61,14 @@ import org.bukkit.event.hanging.HangingBreakByEntityEvent;
 import org.bukkit.event.player.PlayerBucketEmptyEvent;
 import org.bukkit.event.player.PlayerBucketFillEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.PlayerInventory;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.File;
+import java.lang.reflect.Method;
 import java.util.*;
+import java.util.logging.Level;
 
 import static com.andrei1058.bedwars.BedWars.*;
 import static com.andrei1058.bedwars.api.language.Language.getMsg;
@@ -72,6 +76,13 @@ import static com.andrei1058.bedwars.api.language.Language.getMsg;
 public class BreakPlace implements Listener {
 
     private static final List<Player> buildSession = new ArrayList<>();
+    // BlockPlaceEvent#getHand() and PlayerInventory#setItemInOffHand() are not part of the 1.8 api
+    // this plugin is compiled against, but they are needed for taking the pop-up tower item from
+    // the hand which was used for placing it. They are resolved once and are null on 1.8 servers
+    // where there is no off hand at all.
+    private static final Method BLOCK_PLACE_GET_HAND = getMethodOrNull(BlockPlaceEvent.class, "getHand");
+    private static final Method SET_ITEM_IN_OFF_HAND = getMethodOrNull(PlayerInventory.class, "setItemInOffHand", ItemStack.class);
+    private static final Object OFF_HAND = getEnumValueOrNull("org.bukkit.inventory.EquipmentSlot", "OFF_HAND");
     private final boolean allowFireBreak;
     private final BlastProtectionUtil blastProtection;
 
@@ -182,6 +193,8 @@ public class BreakPlace implements Listener {
                     Location loc = e.getBlock().getLocation();
                     IArena a1 = Arena.getArenaByPlayer(p);
                     TeamColor col = a1.getTeam(p).getColor();
+                    // consume the tower item from the hand which was used for placing it
+                    consumeTowerItem(e);
                     double rotation = (p.getLocation().getYaw() - 90.0F) % 360.0F;
                     if (rotation < 0.0D) {
                         rotation += 360.0D;
@@ -215,13 +228,32 @@ public class BreakPlace implements Listener {
         Player player = event.getPlayer();
         if (BedWars.getServerType() == ServerType.MULTIARENA
                 && player.getWorld().getName().equalsIgnoreCase(BedWars.getLobbyWorld())) {
-            if (event.getClickedBlock() != null && event.getClickedBlock().getRelative(BlockFace.UP).getType() == Material.FIRE) {
-                if (!isBuildSession(player)) {
+            if (isBuildSession(player)) return;
+            if (event.getClickedBlock() != null) {
+                // do not allow players to toggle trapdoors and fence gates in the lobby
+                if (event.getAction() == Action.RIGHT_CLICK_BLOCK && isTrapdoorOrFenceGate(event.getClickedBlock().getType())) {
+                    event.setCancelled(true);
+                    return;
+                }
+                if (event.getClickedBlock().getRelative(BlockFace.UP).getType() == Material.FIRE) {
                     event.setCancelled(true);
                     //return;
                 }
             }
         }
+    }
+
+    /**
+     * Check if the given material is a trapdoor or a fence gate.
+     * <p>
+     * Names are compared as text because they changed between 1.8 and 1.13 (TRAP_DOOR/TRAPDOOR etc).
+     *
+     * @param type block material.
+     * @return true if the block can be opened/closed by hand.
+     */
+    private static boolean isTrapdoorOrFenceGate(@NotNull Material type) {
+        String name = type.toString();
+        return name.contains("TRAPDOOR") || name.contains("TRAP_DOOR") || name.contains("FENCE_GATE");
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -609,6 +641,77 @@ public class BreakPlace implements Listener {
         } catch (Exception ignored) {
         }
         return false;
+    }
+
+    /**
+     * Take one pop-up tower item from the hand which was used for placing it.
+     * <p>
+     * The item was always taken from the main hand, no matter which hand placed the block.
+     * Because of that a tower item kept in the off hand was never consumed, so players were
+     * able to place an infinite amount of pop-up towers.
+     *
+     * @param event pop-up tower placement event.
+     */
+    private void consumeTowerItem(@NotNull BlockPlaceEvent event) {
+        Player player = event.getPlayer();
+        PlayerInventory inventory = player.getInventory();
+        // the item used for placing the block, on 1.9+ servers it may be the item from the off hand
+        ItemStack usedItem = event.getItemInHand();
+        if (usedItem == null || usedItem.getType() == Material.AIR || usedItem.getAmount() < 1) return;
+
+        ItemStack remaining = null;
+        if (usedItem.getAmount() > 1) {
+            remaining = usedItem.clone();
+            remaining.setAmount(usedItem.getAmount() - 1);
+        }
+
+        if (!isOffHandPlacement(event)) {
+            inventory.setItemInHand(remaining);
+            return;
+        }
+
+        if (SET_ITEM_IN_OFF_HAND != null) {
+            try {
+                //noinspection JavaReflectionMemberAccess
+                SET_ITEM_IN_OFF_HAND.invoke(inventory, remaining);
+                return;
+            } catch (ReflectiveOperationException exception) {
+                BedWars.plugin.getLogger().log(Level.WARNING, "Could not consume the pop-up tower item from the off hand!", exception);
+            }
+        }
+        // last resort, the used item stack is a mirror of the item from the player inventory
+        usedItem.setAmount(usedItem.getAmount() - 1);
+    }
+
+    /**
+     * Check if the block was placed with the off hand.
+     *
+     * @param event block place event.
+     * @return true if the off hand was used for placing the block.
+     */
+    private static boolean isOffHandPlacement(@NotNull BlockPlaceEvent event) {
+        if (BLOCK_PLACE_GET_HAND == null || OFF_HAND == null) return false;
+        try {
+            return OFF_HAND.equals(BLOCK_PLACE_GET_HAND.invoke(event));
+        } catch (ReflectiveOperationException exception) {
+            return false;
+        }
+    }
+
+    private static Method getMethodOrNull(@NotNull Class<?> holder, @NotNull String name, Class<?>... parameters) {
+        try {
+            return holder.getMethod(name, parameters);
+        } catch (NoSuchMethodException exception) {
+            return null;
+        }
+    }
+
+    private static Object getEnumValueOrNull(@NotNull String className, @NotNull String constant) {
+        try {
+            return Class.forName(className).getField(constant).get(null);
+        } catch (ReflectiveOperationException exception) {
+            return null;
+        }
     }
 
     public static boolean isBuildSession(Player p) {

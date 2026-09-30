@@ -33,6 +33,23 @@
             <id>codemc-nms</id>
             <url>https://repo.codemc.io/repository/nms/</url>
         </repository>
+        <repository>
+            <id>codemc-public</id>
+            <url>https://repo.codemc.io/repository/maven-public/</url>
+        </repository>
+        <!--Advanced Slime Paper api-->
+        <repository>
+            <id>infernalsuite</id>
+            <url>https://repo.infernalsuite.com/repository/maven-public/</url>
+        </repository>
+        <repository>
+            <id>glaremasters-concuncan</id>
+            <url>https://repo.glaremasters.me/repository/concuncan/</url>
+        </repository>
+        <repository>
+            <id>tomkeuper-releases</id>
+            <url>https://repo.tomkeuper.com/repository/releases/</url>
+        </repository>
     </repositories>
 
     <dependencies>

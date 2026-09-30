@@ -12,6 +12,7 @@ import org.bukkit.scheduler.BukkitRunnable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import static com.andrei1058.bedwars.BedWars.config;
 import static com.andrei1058.bedwars.BedWars.plugin;
@@ -24,13 +25,18 @@ public class HealPoolTask extends BukkitRunnable {
     private Random r = new Random();
     private Location l;
 
-    private static List<HealPoolTask> healPoolTasks = new ArrayList<>();
+    /**
+     * Tasks are registered/removed while this list may be iterated (eg: a team is eliminated
+     * while other teams still have a heal pool), so a copy on write list is used to avoid
+     * {@link java.util.ConcurrentModificationException}.
+     */
+    private static final List<HealPoolTask> healPoolTasks = new CopyOnWriteArrayList<>();
 
     public HealPoolTask(ITeam bwt){
         this.bwt = bwt;
         if (bwt == null || bwt.getSpawn() == null){
             removeForTeam(this.bwt);
-            cancel();
+            cancelTask(this);
             return;
         }
         int radius = bwt.getArena().getConfig().getInt(ConfigPath.ARENA_ISLAND_RADIUS);
@@ -51,6 +57,7 @@ public class HealPoolTask extends BukkitRunnable {
         //null checks
         if ((bwt == null) || (bwt.getSpawn() == null) || (arena == null)){
             healPoolTasks.remove(this);
+            cancelTask(this);
             return;
         }
 
@@ -89,8 +96,8 @@ public class HealPoolTask extends BukkitRunnable {
         if (healPoolTasks.isEmpty() || a == null) return;
         for (HealPoolTask hpt: healPoolTasks) {
             if (hpt == null) continue;
-            if (hpt.getArena().equals(a)){
-                hpt.cancel();
+            if (hpt.getArena() != null && hpt.getArena().equals(a)){
+                cancelTask(hpt);
                 healPoolTasks.remove(hpt);
             }
         }
@@ -100,8 +107,8 @@ public class HealPoolTask extends BukkitRunnable {
         if (healPoolTasks == null || healPoolTasks.isEmpty()  || (a == null)) return;
         for (HealPoolTask hpt: healPoolTasks) {
             if (hpt == null) continue;
-            if (hpt.getArena().getWorldName().equals(a)){
-                hpt.cancel();
+            if (hpt.getArena() != null && hpt.getArena().getWorldName().equals(a)){
+                cancelTask(hpt);
                 healPoolTasks.remove(hpt);
             }
         }
@@ -111,10 +118,25 @@ public class HealPoolTask extends BukkitRunnable {
         if (healPoolTasks == null || healPoolTasks.isEmpty()  || (team == null)) return;
         for (HealPoolTask hpt:healPoolTasks) {
             if (hpt == null) continue;
-            if (hpt.getBwt().equals(team)){
-                hpt.cancel();
+            if (hpt.getBwt() != null && hpt.getBwt().equals(team)){
+                cancelTask(hpt);
                 healPoolTasks.remove(hpt);
             }
+        }
+    }
+
+    /**
+     * Cancel a heal pool task.
+     * <p>
+     * {@link BukkitRunnable#cancel()} throws an exception when the task was not scheduled yet.
+     *
+     * @param task task to cancel.
+     */
+    private static void cancelTask(HealPoolTask task) {
+        try {
+            task.cancel();
+        } catch (IllegalStateException ignored) {
+            // the task was not scheduled yet, there is nothing to cancel
         }
     }
 

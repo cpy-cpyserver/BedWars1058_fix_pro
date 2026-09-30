@@ -127,6 +127,14 @@ public class Arena implements IArena {
     private String group = "Default", arenaName, worldName;
     private List<ITeam> teams = new ArrayList<>();
     private LinkedList<org.bukkit.util.Vector> placed = new LinkedList<>();
+    /**
+     * Fast lookup for {@link #isBlockPlaced(Block)}.
+     * <p>
+     * {@link #placed} is iterated for every check otherwise, which is very expensive
+     * because blocks are placed a lot during a game.
+     */
+    private final Map<Long, Integer> placedLookup = new HashMap<>();
+    private int placedLookupSize = 0;
     private List<String> nextEvents = new ArrayList<>();
     private List<Region> regionsList = new ArrayList<>();
     private int renderDistance;
@@ -758,10 +766,46 @@ public class Arena implements IArena {
         Arena.afkCheck.remove(p.getUniqueId());
         BedWars.getAPI().getAFKUtil().setPlayerAFK(p, false);
 
+        LastHit lastHit = LastHit.getLastHit(p);
+        Player lastDamager = (lastHit == null) ? null :
+                (lastHit.getDamager() instanceof Player) ? (Player) lastHit.getDamager() : null;
+        if (lastHit != null) {
+            // accept damager in last 13 seconds only.
+            if (lastHit.getTime() < System.currentTimeMillis() - 13_000) {
+                lastDamager = null;
+            }
+        }
+
+        ITeam killerTeam = null;
+        PlayerKillEvent.PlayerKillCause killCause = null;
+        PlayerKillEvent killEvent = null;
+
         if (status == GameState.playing) {
+            team = getTeam(p);
+            // pvp log out
+            // the kill event is called before removing the player from the team, otherwise
+            // plugins cannot resolve the victim team through IArena#getTeam anymore
+            if (team != null) {
+                killerTeam = getTeam(lastDamager);
+                if (lastDamager != null && isPlayer(lastDamager) && killerTeam != null) {
+                    String message;
+                    if (team.isBedDestroyed()) {
+                        killCause = PlayerKillEvent.PlayerKillCause.PLAYER_DISCONNECT_FINAL;
+                        message = Messages.PLAYER_DIE_PVP_LOG_OUT_FINAL;
+                    } else {
+                        message = Messages.PLAYER_DIE_PVP_LOG_OUT_REGULAR;
+                        killCause = PlayerKillEvent.PlayerKillCause.PLAYER_DISCONNECT;
+                    }
+
+                    killEvent = new PlayerKillEvent(this, p, team, lastDamager, killerTeam,
+                            player -> Language.getMsg(player, message), killCause
+                    );
+                    Bukkit.getPluginManager().callEvent(killEvent);
+                }
+            }
+
             for (ITeam t : getTeams()) {
                 if (t.isMember(p)) {
-                    team = t;
                     t.getMembers().remove(p);
                     //noinspection deprecation
                     t.destroyBedHolo(p);
@@ -775,15 +819,6 @@ public class Arena implements IArena {
             cacheList = ShopCache.getShopCache(p.getUniqueId()).getCachedPermanents();
         }
 
-        LastHit lastHit = LastHit.getLastHit(p);
-        Player lastDamager = (lastHit == null) ? null :
-                (lastHit.getDamager() instanceof Player) ? (Player) lastHit.getDamager() : null;
-        if (lastHit != null) {
-            // accept damager in last 13 seconds only.
-            if (lastHit.getTime() < System.currentTimeMillis() - 13_000) {
-                lastDamager = null;
-            }
-        }
         Bukkit.getPluginManager().callEvent(new PlayerLeaveArenaEvent(p, this, lastDamager));
         //players.remove must be under call event in order to check if the player is a spectator or not
         players.remove(p);
@@ -838,49 +873,31 @@ public class Arena implements IArena {
             }
 
             // pvp log out
-            if (team != null) {
-                ITeam killerTeam = getTeam(lastDamager);
-                if (lastDamager != null && isPlayer(lastDamager) && killerTeam != null) {
-                    String message;
-                    PlayerKillEvent.PlayerKillCause cause;
-                    if (team.isBedDestroyed()) {
-                        cause = PlayerKillEvent.PlayerKillCause.PLAYER_DISCONNECT_FINAL;
-                        message = Messages.PLAYER_DIE_PVP_LOG_OUT_FINAL;
-                    } else {
-                        message = Messages.PLAYER_DIE_PVP_LOG_OUT_REGULAR;
-                        cause = PlayerKillEvent.PlayerKillCause.PLAYER_DISCONNECT;
+            if (killEvent != null) {
+                if (null != killEvent.getMessage()) {
+                    for (Player inGame : getPlayers()) {
+                        Language lang = Language.getPlayerLanguage(inGame);
+                        inGame.sendMessage(killEvent.getMessage().apply(inGame)
+                                .replace("{PlayerTeamName}", team.getDisplayName(lang))
+                                .replace("{PlayerColor}", team.getColor().chat().toString()).replace("{PlayerName}", p.getDisplayName())
+                                .replace("{KillerColor}", killerTeam.getColor().chat().toString())
+                                .replace("{KillerName}", lastDamager.getDisplayName())
+                                .replace("{KillerTeamName}", killerTeam.getDisplayName(lang)));
                     }
-
-                    PlayerKillEvent event = new PlayerKillEvent(this, p, team, lastDamager, killerTeam,
-                            player -> Language.getMsg(player, message), cause
-                    );
-                    Bukkit.getPluginManager().callEvent(event);
-
-                    if (null != event.getMessage()) {
-                        for (Player inGame : getPlayers()) {
-                            Language lang = Language.getPlayerLanguage(inGame);
-                            inGame.sendMessage(event.getMessage().apply(inGame)
-                                    .replace("{PlayerTeamName}", team.getDisplayName(lang))
-                                    .replace("{PlayerColor}", team.getColor().chat().toString()).replace("{PlayerName}", p.getDisplayName())
-                                    .replace("{KillerColor}", killerTeam.getColor().chat().toString())
-                                    .replace("{KillerName}", lastDamager.getDisplayName())
-                                    .replace("{KillerTeamName}", killerTeam.getDisplayName(lang)));
-                        }
-                    }
-
-                    if (null != event.getMessage()) {
-                        for (Player inGame : getSpectators()) {
-                            Language lang = Language.getPlayerLanguage(inGame);
-                            inGame.sendMessage(event.getMessage().apply(inGame)
-                                    .replace("{PlayerTeamName}", team.getDisplayName(lang))
-                                    .replace("{PlayerColor}", team.getColor().chat().toString()).replace("{PlayerName}", p.getDisplayName())
-                                    .replace("{KillerColor}", killerTeam.getColor().chat().toString())
-                                    .replace("{KillerName}", lastDamager.getDisplayName())
-                                    .replace("{KillerTeamName}", killerTeam.getDisplayName(lang)));
-                        }
-                    }
-                    PlayerDrops.handlePlayerDrops(this, p, lastDamager, team, killerTeam, cause, new ArrayList<>(Arrays.asList(p.getInventory().getContents())));
                 }
+
+                if (null != killEvent.getMessage()) {
+                    for (Player inGame : getSpectators()) {
+                        Language lang = Language.getPlayerLanguage(inGame);
+                        inGame.sendMessage(killEvent.getMessage().apply(inGame)
+                                .replace("{PlayerTeamName}", team.getDisplayName(lang))
+                                .replace("{PlayerColor}", team.getColor().chat().toString()).replace("{PlayerName}", p.getDisplayName())
+                                .replace("{KillerColor}", killerTeam.getColor().chat().toString())
+                                .replace("{KillerName}", lastDamager.getDisplayName())
+                                .replace("{KillerTeamName}", killerTeam.getDisplayName(lang)));
+                    }
+                }
+                PlayerDrops.handlePlayerDrops(this, p, lastDamager, team, killerTeam, killCause, new ArrayList<>(Arrays.asList(p.getInventory().getContents())));
             }
         }
         for (Player on : getPlayers()) {
@@ -1365,6 +1382,7 @@ public class Arena implements IArena {
     public void addPlacedBlock(Block block) {
         if (block == null) return;
         placed.add(new org.bukkit.util.Vector(block.getX(), block.getY(), block.getZ()));
+        addToPlacedLookup(block.getX(), block.getY(), block.getZ());
     }
 
     @Override
@@ -1372,14 +1390,58 @@ public class Arena implements IArena {
         if (block == null) return;
         if (!isBlockPlaced(block)) return;
         placed.remove(new org.bukkit.util.Vector(block.getX(), block.getY(), block.getZ()));
+        removeFromPlacedLookup(block.getX(), block.getY(), block.getZ());
     }
 
     @Override
     public boolean isBlockPlaced(Block block) {
-        for (org.bukkit.util.Vector v : getPlaced()) {
-            if (v.getX() == block.getX() && v.getY() == block.getY() && v.getZ() == block.getZ()) return true;
+        if (block == null || placed == null) return false;
+        if (placedLookupSize != placed.size()) {
+            // the list is exposed by getPlaced(), so it may be modified without going through this class
+            updatePlacedLookup();
         }
-        return false;
+        return placedLookup.containsKey(placedBlockKey(block.getX(), block.getY(), block.getZ()));
+    }
+
+    /**
+     * Keep track of the given block coordinates in {@link #placedLookup}.
+     */
+    private void addToPlacedLookup(int x, int y, int z) {
+        placedLookup.merge(placedBlockKey(x, y, z), 1, Integer::sum);
+        placedLookupSize++;
+    }
+
+    /**
+     * Remove the given block coordinates from {@link #placedLookup}.
+     */
+    private void removeFromPlacedLookup(int x, int y, int z) {
+        long key = placedBlockKey(x, y, z);
+        Integer amount = placedLookup.get(key);
+        if (amount == null) return;
+        if (amount > 1) {
+            placedLookup.put(key, amount - 1);
+        } else {
+            placedLookup.remove(key);
+        }
+        placedLookupSize--;
+    }
+
+    /**
+     * Rebuild {@link #placedLookup} from {@link #placed}.
+     */
+    private void updatePlacedLookup() {
+        placedLookup.clear();
+        for (org.bukkit.util.Vector vector : placed) {
+            placedLookup.merge(placedBlockKey(vector.getBlockX(), vector.getBlockY(), vector.getBlockZ()), 1, Integer::sum);
+        }
+        placedLookupSize = placed.size();
+    }
+
+    /**
+     * Convert block coordinates to a key used by {@link #placedLookup}.
+     */
+    private static long placedBlockKey(int x, int y, int z) {
+        return ((long) (x & 0x3FFFFFF) << 38) | ((long) (z & 0x3FFFFFF) << 12) | (y & 0xFFF);
     }
 
     /**
