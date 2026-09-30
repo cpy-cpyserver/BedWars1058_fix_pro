@@ -44,10 +44,6 @@ pom.xml.next
 release.properties
 dependency-reduced-pom.xml
 buildNumber.properties
-
-# local reference checkout of the original repository (not part of the build)
-原版bedwars1058请勿更改/
-
 # Intellij
 *.iml
 *.java___jb_tmp___

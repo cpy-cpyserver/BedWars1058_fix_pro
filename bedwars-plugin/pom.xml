@@ -344,6 +344,7 @@
     </dependencies>
 
     <build>
+        <finalName>bedwars1058-plugin-${project.version}-fix-${fix.version}</finalName>
         <resources>
             <resource>
                 <directory>src/main/resources</directory>
