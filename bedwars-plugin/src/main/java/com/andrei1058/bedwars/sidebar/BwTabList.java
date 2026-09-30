@@ -402,10 +402,15 @@ public class BwTabList {
     /**
      * Gets/generates a prefix string to be concatenated to the player tab-list identifier, it keeps tab-list ordered by team.
      *
-     * @param team target.
+     * @param team target, may be null when the player is not in a team yet (eg: while rejoining).
      * @return prefix string.
      */
-    private String getCreateTeamTabOrderPrefix(@NotNull ITeam team) {
+    private String getCreateTeamTabOrderPrefix(@Nullable ITeam team) {
+        // the player has no team yet (eg: right after a rejoin), order him like a spectator
+        // instead of throwing a NullPointerException
+        if (null == team) {
+            return String.valueOf(SPECTATOR_PREFIX);
+        }
         String prefix = teamOrderPrefix.getOrDefault(team.getIdentity(), null);
         if (null == prefix) {
             teamOrderIndex++;
