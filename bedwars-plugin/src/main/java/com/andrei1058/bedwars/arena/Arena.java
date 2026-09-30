@@ -836,7 +836,11 @@ public class Arena implements IArena {
                 teamuri = true;
             }
         }
-        if (status == GameState.starting && (maxInTeam > players.size() && teamuri || players.size() < minPlayers && !teamuri)) {
+        // The amount of players check must also be done when a party is still inside the arena,
+        // otherwise a party leaving during the countdown keeps it running.
+        // Example: on a 2v2 arena a 2 players party + 1 player started the countdown, the third
+        // player left and the countdown went on, starting a game with a single (party) team.
+        if (status == GameState.starting && (players.size() < minPlayers || maxInTeam > players.size() && teamuri)) {
             changeStatus(GameState.waiting);
             for (Player on : players) {
                 on.sendMessage(getMsg(on, Messages.ARENA_START_COUNTDOWN_STOPPED_INSUFF_PLAYERS_CHAT));
@@ -975,7 +979,7 @@ public class Arena implements IArena {
                             teamuri = true;
                         }
                     }
-                    if (status == GameState.starting && (maxInTeam > players.size() && teamuri || players.size() < minPlayers && !teamuri)) {
+                    if (status == GameState.starting && (players.size() < minPlayers || maxInTeam > players.size() && teamuri)) {
                         changeStatus(GameState.waiting);
                         for (Player on : players) {
                             on.sendMessage(getMsg(on, Messages.ARENA_START_COUNTDOWN_STOPPED_INSUFF_PLAYERS_CHAT));

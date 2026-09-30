@@ -13,7 +13,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <!-- Version suffix of the built plugin jar: bedwars1058-plugin-25.2-fix-<fix.version>.jar -->
-        <fix.version>1.5</fix.version>
+        <fix.version>1.6</fix.version>
     </properties>
 
     <repositories>
