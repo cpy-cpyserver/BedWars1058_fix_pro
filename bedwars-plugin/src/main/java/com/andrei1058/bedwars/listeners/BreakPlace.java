@@ -256,6 +256,104 @@ public class BreakPlace implements Listener {
         return name.contains("TRAPDOOR") || name.contains("TRAP_DOOR") || name.contains("FENCE_GATE");
     }
 
+    /**
+     * Protect the map from item uses which replace a block without firing a place or a break event.
+     * <p>
+     * The shop sells fishing rods and buckets, so players can fish a water bottle and use it on a dirt block
+     * to turn it into mud. The same goes for an axe on a log (it becomes a stripped log), a shovel on a grass
+     * block (it becomes a dirt path) or a hoe on dirt (it becomes farmland). Those blocks are not tracked by
+     * {@link IArena#isBlockPlaced(Block)}, so the map could be damaged even if the arena map break is disabled.
+     *
+     * @param event player interaction event.
+     */
+    @EventHandler(ignoreCancelled = true)
+    public void onMapModifyInteract(@NotNull PlayerInteractEvent event) {
+        if (event.getAction() != Action.RIGHT_CLICK_BLOCK) return;
+        Block block = event.getClickedBlock();
+        if (block == null) return;
+        Player player = event.getPlayer();
+        if (isBuildSession(player)) return;
+        IArena arena = Arena.getArenaByPlayer(player);
+        if (arena == null || arena.isAllowMapBreak()) return;
+        // blocks placed by players are not part of the map, they can be modified
+        if (arena.isBlockPlaced(block)) return;
+        if (!isMapModifyingUse(event.getItem(), block.getType())) return;
+        event.setCancelled(true);
+        player.sendMessage(getMsg(player, Messages.INTERACT_CANNOT_BREAK_BLOCK));
+    }
+
+    /**
+     * Protect the map from block conversions which are not caused by a place or a break event.
+     * <p>
+     * Paper calls {@link EntityChangeBlockEvent} for the water bottle to mud conversion with the player as the
+     * entity, so refusing the event keeps the map block untouched and does not consume the water bottle.
+     *
+     * @param event block change event.
+     */
+    @EventHandler(ignoreCancelled = true)
+    public void onMapConversion(@NotNull EntityChangeBlockEvent event) {
+        if (!(event.getEntity() instanceof Player)) return;
+        Player player = (Player) event.getEntity();
+        if (isBuildSession(player)) return;
+        IArena arena = Arena.getArenaByPlayer(player);
+        if (arena == null || arena.isAllowMapBreak()) return;
+        if (arena.isBlockPlaced(event.getBlock())) return;
+        event.setCancelled(true);
+    }
+
+    /**
+     * Check if the given item use would replace the given block with another one.
+     * <p>
+     * Material names are compared as text because they changed between server versions and most of them
+     * do not exist on the 1.8 api this plugin is compiled against.
+     *
+     * @param item    item used by the player, it may be null.
+     * @param clicked type of the clicked block.
+     * @return true if the interaction modifies the clicked block.
+     */
+    private static boolean isMapModifyingUse(ItemStack item, @NotNull Material clicked) {
+        if (item == null || item.getType() == Material.AIR) return false;
+        String held = item.getType().toString();
+        String block = clicked.toString();
+        boolean wood = block.endsWith("_LOG") || block.endsWith("_WOOD") || block.endsWith("_STEM")
+                || block.endsWith("_HYPHAE") || block.equals("BAMBOO_BLOCK");
+        // axes strip wood, scrape copper and remove the wax from it
+        if (held.endsWith("_AXE")) return wood || block.contains("COPPER");
+        // shovels turn grass and dirt into a dirt path and remove snow layers
+        if (held.endsWith("_SHOVEL") || held.endsWith("_SPADE")) {
+            return isDirtLike(block) || block.equals("DIRT_PATH") || block.equals("GRASS_PATH") || block.equals("SNOW");
+        }
+        // hoes turn dirt into farmland
+        if (held.endsWith("_HOE")) return isDirtLike(block);
+        // water bottles turn dirt, coarse dirt and rooted dirt into mud
+        if (held.equals("POTION")) return isDirtLike(block);
+        return false;
+    }
+
+    /**
+     * Check if the given material name is a block which can be turned into mud, a dirt path or farmland.
+     *
+     * @param name material name.
+     * @return true if the block is made of dirt.
+     */
+    private static boolean isDirtLike(@NotNull String name) {
+        switch (name) {
+            case "DIRT":
+            case "COARSE_DIRT":
+            case "ROOTED_DIRT":
+            case "PODZOL":
+            case "MYCELIUM":
+            case "MUD":
+            case "SOIL": // farmland before 1.13
+            case "FARMLAND":
+            case "GRASS": // grass block before 1.13, short grass after
+            case "GRASS_BLOCK":
+                return true;
+            default:
+                return false;
+        }
+    }
+
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onBlockBreakMonitor(BlockBreakEvent event) {
         IArena a = Arena.getArenaByPlayer(event.getPlayer());
