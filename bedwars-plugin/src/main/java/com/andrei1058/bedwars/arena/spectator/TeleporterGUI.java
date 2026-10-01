@@ -32,6 +32,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -62,11 +63,9 @@ public class TeleporterGUI {
         }
         List<Player> players = arena.getPlayers();
         for (int i = 0; i < inv.getSize(); i++) {
-            if (i < players.size()) {
-                inv.setItem(i, createHead(players.get(i), p));
-            } else {
-                inv.setItem(i, new ItemStack(Material.AIR));
-            }
+            ItemStack item = i < players.size() ? createHead(players.get(i), p) : null;
+            // a head is missing for players which are not in a team, for example while they are leaving
+            inv.setItem(i, null == item ? new ItemStack(Material.AIR) : item);
         }
     }
 
@@ -108,13 +107,25 @@ public class TeleporterGUI {
 
     /**
      * Create a player head
+     *
+     * @param targetPlayer the player to display.
+     * @param GUIholder    the player which has the GUI open.
+     * @return the head, or null if the given player is not in a team, for example while they are leaving the
+     * arena. In that case the slot has to be left empty.
      */
-    private static ItemStack createHead(Player targetPlayer, Player GUIholder) {
+    private static @Nullable ItemStack createHead(Player targetPlayer, Player GUIholder) {
+        IArena currentArena = Arena.getArenaByPlayer(targetPlayer);
+        if (null == currentArena) return null;
+        ITeam targetPlayerTeam = currentArena.getTeam(targetPlayer);
+        if (null == targetPlayerTeam) {
+            // the player is leaving the arena, they are still in the players list but not in their team
+            // anymore, so there is no team to display and no reason to keep them in the teleporter
+            return null;
+        }
+
         ItemStack i = nms.getPlayerHead(targetPlayer, null);
         ItemMeta im = i.getItemMeta();
         assert im != null;
-        IArena currentArena = Arena.getArenaByPlayer(targetPlayer);
-        ITeam targetPlayerTeam = currentArena.getTeam(targetPlayer);
 
         im.setDisplayName(getMsg(GUIholder, Messages.ARENA_SPECTATOR_TELEPORTER_GUI_HEAD_NAME)
                 .replace("{vPrefix}", BedWars.getChatSupport().getPrefix(targetPlayer))

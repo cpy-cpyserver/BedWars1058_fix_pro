@@ -12,9 +12,12 @@
 
 - 只做 **bug 修复**，不改玩法、不改配置格式，尽量与官方 25.2 保持一致（与官方 jar 逐类对比，只有修复涉及的那几个类不同）。
 - 修好的 jar 发布在 [Releases](https://github.com/cpy-cpyserver/BedWars1058_fix_pro/releases) 页面，文件名格式为 `bedwars1058-plugin-25.2-fix-<修复版本号>.jar`。
-- 当前版本：**1.8**，对应文件 `bedwars1058-plugin-25.2-fix-1.8.jar`。
+- 当前版本：**1.9**，对应文件 `bedwars1058-plugin-25.2-fix-1.9.jar`。
 
 ## 修复列表（相对官方 25.2）
+
+### fix 1.9
+- **旁观者传送器 GUI 报错**：有旁观者开着“传送器”GUI 时，如果场上有玩家用 `/leave` 或被传送离开，控制台会刷 `NullPointerException`（`TeleporterGUI.createHead` 里 `getTeam()` 返回 null）。原因是 `PlayerLeaveArenaEvent` 触发那一刻，离开的玩家已经被移出队伍、但还在玩家列表里，GUI 刷新时拿不到他的队伍。现在会跳过没有队伍的玩家，他对应的头会变成空槽，不再报错。
 
 ### fix 1.8
 - **退出后重新加入（rejoin）不显示队伍**：玩家掉线/退出再 `/rejoin` 回来后，tab 栏和别人看到的名字都不带队伍了（只剩一个裸名字，头顶名字也一样）。原因是 `PlayerReJoinEvent` 在玩家被加回队伍**之前**就触发了，此时格式化出来的队伍前缀是空的；现在改成在下一 tick（队伍已恢复）再刷新 tab 格式。
@@ -40,7 +43,7 @@
 
 ## 安装
 
-1. 到 [Releases](https://github.com/cpy-cpyserver/BedWars1058_fix_pro/releases) 下载最新的 `bedwars1058-plugin-25.2-fix-1.8.jar`；
+1. 到 [Releases](https://github.com/cpy-cpyserver/BedWars1058_fix_pro/releases) 下载最新的 `bedwars1058-plugin-25.2-fix-1.9.jar`；
 2. 放进服务器 `plugins/` 目录，并把旧的 `bedwars1058-plugin-25.2.jar` 删除或改名（**同一个插件不要同时放两个 jar**，否则会提示重复加载）；
 3. 重启服务器即可。原来 `plugins/BedWars1058/` 里的配置、地图、语言文件都不用动。
 
@@ -52,7 +55,7 @@
 mvn clean package -DskipTests
 ```
 
-产物在 `bedwars-plugin/target/bedwars1058-plugin-25.2-fix-1.8.jar`，版本号由根目录 `pom.xml` 里的 `fix.version` 控制。
+产物在 `bedwars-plugin/target/bedwars1058-plugin-25.2-fix-1.9.jar`，版本号由根目录 `pom.xml` 里的 `fix.version` 控制。
 
 > 依赖说明：官方 25.2 使用的 `sidebar-base:24.2` 等库已经下架，本仓库把它们放在了 `libs/repo` 本地仓库里（生成方式见 [libs/README.md](libs/README.md)），所以离线也能正常构建。
 
