@@ -12,9 +12,12 @@
 
 - 只做 **bug 修复**，不改玩法、不改配置格式，尽量与官方 25.2 保持一致（与官方 jar 逐类对比，只有修复涉及的那几个类不同）。
 - 修好的 jar 发布在 [Releases](https://github.com/cpy-cpyserver/BedWars1058_fix_pro/releases) 页面，文件名格式为 `bedwars1058-plugin-25.2-fix-<修复版本号>.jar`。
-- 当前版本：**1.7**，对应文件 `bedwars1058-plugin-25.2-fix-1.7.jar`。
+- 当前版本：**1.8**，对应文件 `bedwars1058-plugin-25.2-fix-1.8.jar`。
 
 ## 修复列表（相对官方 25.2）
+
+### fix 1.8
+- **退出后重新加入（rejoin）不显示队伍**：玩家掉线/退出再 `/rejoin` 回来后，tab 栏和别人看到的名字都不带队伍了（只剩一个裸名字，头顶名字也一样）。原因是 `PlayerReJoinEvent` 在玩家被加回队伍**之前**就触发了，此时格式化出来的队伍前缀是空的；现在改成在下一 tick（队伍已恢复）再刷新 tab 格式。
 
 ### fix 1.7
 - **地图方块保护（水瓶变泥巴、斧头去皮等）**：商店卖鱼竿和水桶，玩家钓鱼钓到水瓶后可以对着地图里的泥土使用，把泥土变成泥巴；同理还能用斧头把地图里的原木变成去皮原木、用锹把草方块变成土径、用锄把泥土变成耕地。这些操作都不触发放置/破坏事件，所以插件原本“只能破坏玩家放置的方块”的保护拦不住，地图会被改坏。现在这些交互会被直接拦下并提示不能破坏（`interact-cant-break`），只有玩家自己放下的方块才能这样改造；地图配置里 `allow-map-break: true`（允许破坏地图）的竞技场不受影响。
@@ -37,7 +40,7 @@
 
 ## 安装
 
-1. 到 [Releases](https://github.com/cpy-cpyserver/BedWars1058_fix_pro/releases) 下载最新的 `bedwars1058-plugin-25.2-fix-1.7.jar`；
+1. 到 [Releases](https://github.com/cpy-cpyserver/BedWars1058_fix_pro/releases) 下载最新的 `bedwars1058-plugin-25.2-fix-1.8.jar`；
 2. 放进服务器 `plugins/` 目录，并把旧的 `bedwars1058-plugin-25.2.jar` 删除或改名（**同一个插件不要同时放两个 jar**，否则会提示重复加载）；
 3. 重启服务器即可。原来 `plugins/BedWars1058/` 里的配置、地图、语言文件都不用动。
 
@@ -49,7 +52,7 @@
 mvn clean package -DskipTests
 ```
 
-产物在 `bedwars-plugin/target/bedwars1058-plugin-25.2-fix-1.7.jar`，版本号由根目录 `pom.xml` 里的 `fix.version` 控制。
+产物在 `bedwars-plugin/target/bedwars1058-plugin-25.2-fix-1.8.jar`，版本号由根目录 `pom.xml` 里的 `fix.version` 控制。
 
 > 依赖说明：官方 25.2 使用的 `sidebar-base:24.2` 等库已经下架，本仓库把它们放在了 `libs/repo` 本地仓库里（生成方式见 [libs/README.md](libs/README.md)），所以离线也能正常构建。
 

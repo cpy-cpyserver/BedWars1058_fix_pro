@@ -25,6 +25,7 @@ import com.andrei1058.bedwars.api.arena.IArena;
 import com.andrei1058.bedwars.api.events.player.*;
 import com.andrei1058.bedwars.api.server.ServerType;
 import com.andrei1058.bedwars.arena.Arena;
+import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -79,7 +80,11 @@ public class ScoreboardListener implements Listener {
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void reJoin(@NotNull PlayerReJoinEvent e) {
         // re-add player to scoreboard tab list
-        SidebarService.getInstance().handleReJoin(e.getArena(), e.getPlayer());
+        // the event is fired before the player is added back to their team (see Arena#reJoin), so the tab
+        // format must be applied on the next tick, otherwise no team would be displayed for that player
+        final IArena arena = e.getArena();
+        final Player player = e.getPlayer();
+        Bukkit.getScheduler().runTaskLater(BedWars.plugin, () -> SidebarService.getInstance().handleReJoin(arena, player), 1L);
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
